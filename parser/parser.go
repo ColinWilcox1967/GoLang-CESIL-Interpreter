@@ -6,14 +6,36 @@ import (
 	"os"
 )
 
+
 var (
 	ProgramLabels map[string]int
 	Accumulator int
 	InstructionPointer int
 	Variables map[string]int
+	ProgramData []int
+
+	ProgramDataStart, ProgramDataEnd int
 )
 
 
+func doMarkStartOfData(lineNumber int) {
+	ProgramDataStart = lineNumber+1
+}
+
+func doMarkEndOfDataEnd(lineNumber int) {
+	ProgramDataEnd = lineNumber - 1
+}
+
+func doAddDataItem(dataLine string, lineNumber int) {
+
+	dataValue, err := stringToInteger(dataLine)
+	if err == nil {
+		ProgramData = append(ProgramData, dataValue)
+	} else {
+		str := fmt.Sprintf("Invalid data item '%s' at line %d.\n", dataLine, lineNumber)
+		message(str)
+	}
+}
 
 func doAdd(argument string) error {
 	value, err := stringToInteger(argument)
@@ -56,7 +78,7 @@ func doDivide(argument string) error {
 }
 
 func doHalt () {
-
+	os.Exit(0)
 }
 
 func doLine () {
@@ -139,10 +161,15 @@ func Parse (program []string) bool {
 			case "JUMP": 		doJump(argument)
 			case "JINEG": 		doJumpIfNegative(argument)
 			case "JIZERO": 		doJumpIfZero(argument)
+			case "%":			doMarkStartOfData(lineNumber)
+			case "*":			doMarkEndOfData(lineNumber)
 
 			default:
-				 fmt.Printf ("Unknown instruction in line %d : '%s'\n", lineNumber+1, instruction)
-
+				if lineNumber >= ProgramDataStart && lineNumber <= ProgramDataEnd {
+					doAddDataItem(program[lineNumber], lineNumber)
+				} else {
+					fmt.Printf ("Unknown instruction in line %d : '%s'\n", lineNumber+1, instruction)
+				}
 		}
 	}
 }
