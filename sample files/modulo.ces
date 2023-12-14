@@ -1,0 +1,46 @@
+        PRINT       "Modulo for CESIL"
+        LINE
+        LINE
+* Get numerator
+LOOP    IN
+        STORE       NUMER
+        LINE
+* Get denominator
+        IN
+        STORE       DENOM
+        LINE
+        LOAD        NUMER
+        PRINT       "SUM: "
+        OUT
+        PRINT       " divides into "
+        LOAD        DENOM
+        OUT
+        PRINT       " a total of "
+        LOAD        NUMER
+        DIVIDE      DENOM
+        OUT
+        PRINT       " times and has a remainder of "
+        MULTIPLY    DENOM
+        STORE       EXACTVAL
+        LOAD        NUMER
+        SUBTRACT    EXACTVAL
+        OUT
+        PRINT       "."
+        IN
+        JINEG       END
+        JUMP        LOOP
+END     HALT
+
+HALTTHISHALT
+
+INANITY LINE
+        PRINT       "You expect something clever?!"
+        HALT
+
+        %
+        16
+        6
+        -1
+        17
+        6
+        1
