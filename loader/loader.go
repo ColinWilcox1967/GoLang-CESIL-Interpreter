@@ -6,7 +6,7 @@ import (
     "os"
 )
 
-func ReadFileAsLines (filePath string) []string {
+func ReadFileAsLines (filePath string) ([]string, bool) {
  
 	var lines []string
 
@@ -24,6 +24,13 @@ func ReadFileAsLines (filePath string) []string {
     for fileScanner.Scan() {
 		lines = append(lines, fileScanner.Text())
     }
+
+//    for i:=0; i < len(lines); i++ {
+  //      fmt.Printf ("%s\n",lines[i])
+    //}
+
+    
   
-    return lines
+    ok := err == nil
+    return lines, ok
 }

@@ -2,9 +2,9 @@ package parser
 
 import (
 	"fmt"
-	"strconv"
 	"os"
 	"strings"
+	support "../support"
 )
 
 
@@ -16,11 +16,13 @@ var (
 	ProgramData []int
 
 	ProgramDataStart, ProgramDataEnd int
+	DataItemPointer int
 )
 
 
 func doMarkStartOfData(lineNumber int) {
 	ProgramDataStart = lineNumber+1
+	DataItemPointer = 0
 }
 
 func doMarkEndOfData(lineNumber int) {
@@ -29,69 +31,101 @@ func doMarkEndOfData(lineNumber int) {
 
 func doAddDataItem(dataLine string, lineNumber int) {
 
-	dataValue, err := stringToInteger(dataLine)
+	dataValue, err := support.StringToInteger(dataLine)
 	if err == nil {
 		ProgramData = append(ProgramData, dataValue)
 	} else {
 		str := fmt.Sprintf("Invalid data item '%s' at line %d.\n", dataLine, lineNumber)
-		message(str)
+		support.Message(str)
 	}
 }
 
 func doAdd(argument string) error {
-	value, err := stringToInteger(argument)
-	if err == nil {
+	var err error
+	
+	value, ok := Variables[argument]
+	if ok {
 		Accumulator += value
+	} else {
+		value, err = support.StringToInteger(argument)
+		if err == nil {
+			Accumulator += value
+		}
 	}
 
 	return err
 }
 
 func doSubtract(argument string) error {
-	value, err := stringToInteger(argument)
-	if err == nil {
+	var err error
+	value, ok := Variables[argument]
+	if ok {
 		Accumulator -= value
+	} else {
+		value, err = support.StringToInteger(argument)
+		if err == nil {
+			Accumulator -= value
+		}
 	}
 
 	return err
 }
 
 func doMultiply(argument string) error {
-	value, err := stringToInteger(argument)
-	if err == nil {
+	var err error
+	value, ok := Variables[argument]
+	if ok {
 		Accumulator *= value
+	} else {	
+		value, err = support.StringToInteger(argument)
+		if err == nil {
+			Accumulator *= value
+		}
 	}
 
 	return err
 }
 
 func doDivide(argument string) error {
-	value, err := stringToInteger(argument)
-	if err == nil {
+	var err error
+	
+	value, ok := Variables[argument]
+	if ok {
 		if value == 0 {
-			message("Divide by zero")
+			support.Message("Divide by zero")
 			os.Exit(-1)
+		} else {
+			Accumulator /= value
 		}
-		Accumulator /= value
+	} else {
+		value, err = support.StringToInteger(argument)
+		if err == nil {
+			if value == 0 {
+				support.Message("Divide by zero")
+				os.Exit(-1)
+			}
+			Accumulator /= value
+		}
 	}
 
 	return err
 }
 
-func doHalt () {
+func doHalt() {
 	os.Exit(0)
 }
 
-func doLine () {
+func doLine() {
 	fmt.Println()
 }
 
 func doIn() {
-
+	Accumulator = ProgramData[DataItemPointer]
+	DataItemPointer++
 }
 
 func doOut() {
-	fmt.Printf("%d",Accumulator)
+	fmt.Printf("%d", Accumulator)
 }
 
 func doPrint(str string) {
@@ -100,13 +134,13 @@ func doPrint(str string) {
 
 
 func doLoad(argument string) error {
-	value, err := strconv.Atoi(argument)
-	if err == nil {
+	value, ok := Variables[argument]
+	if ok {
 		Accumulator = value
-		return nil
+	} else {
+		Accumulator,_ = support.StringToInteger(argument)
 	}
-
-	return err
+	return nil
 }
 
 func doStore(argument string) error {
@@ -140,7 +174,28 @@ func doJumpIfZero(argument string) {
 	}
 }
 
-func Parse (program []string) bool {
+func buildString(parts []string, offset int) string {
+	var str string
+
+	for partId := offset; partId < len(parts); partId++ {
+		if parts[partId][0] == '"' {
+			str += parts[partId][1:]
+		} else
+		if parts[partId][len(parts[partId])-1] == '"' {
+			str += parts[partId][:len(parts[partId])-1]
+		} else {
+			str += parts[partId]
+		}
+
+		if partId < len(parts)-1 {
+			str += " "
+		}
+	}
+
+	return str
+}
+
+func Parse(program []string) bool {
 
 	for lineNumber := 0; lineNumber < len(program); lineNumber++ {
 
@@ -149,13 +204,29 @@ func Parse (program []string) bool {
 		var label, instruction, argument string
 
 		if len(fields) >= 3 {
-			// LABEL  COMMAND ARGUMENT
-			label = fields[0]
+			// LABEL COMMAND ARGUMENT
+			label  = strings.ToUpper(fields[0])
+			_, ok := ProgramLabels[label]
+			
+			if !ok {
+				ProgramLabels[label] = lineNumber
+			}
+
 			instruction = fields[1]
-			argument = fields[2]
+
+			argument = buildString(fields, 2) // build parts into a printable string
+						
 		} else if len(fields) == 2 {
+			// COMMAND ARGUMENT
 			instruction = fields[0]
-			argument = fields[1]
+
+			if instruction == "PRINT" {
+				argument = buildString(fields, 1)
+			} else {
+				argument = fields[1]
+			}
+		} else {
+			instruction = program[lineNumber]
 		}
 		
 		if len(instruction) > 0 {
@@ -166,7 +237,7 @@ func Parse (program []string) bool {
 				case "STORE":		doStore(argument)
 				case "IN": 			doIn()
 				case "OUT": 		doOut()
-				case "PRINT": 		doPrint(argument)
+				case "PRINT":		doPrint(argument)
 				case "ADD": 		doAdd(argument)
 				case "SUBTRACT": 	doSubtract(argument)
 				case "MULTIPLY": 	doMultiply(argument)
@@ -176,8 +247,12 @@ func Parse (program []string) bool {
 				case "JIZERO": 		doJumpIfZero(argument)
 				case "%":			doMarkStartOfData(lineNumber)
 				case "*":			doMarkEndOfData(lineNumber)
-
 				default:
+					// Comment
+					if program[lineNumber][0] == '(' {
+						break
+					}
+
 					if lineNumber >= ProgramDataStart && lineNumber <= ProgramDataEnd {
 						doAddDataItem(program[lineNumber], lineNumber)
 					} else {
@@ -186,4 +261,6 @@ func Parse (program []string) bool {
 			}
 		}	
 	}
+
+	return true
 }
