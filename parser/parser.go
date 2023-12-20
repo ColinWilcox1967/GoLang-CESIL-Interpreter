@@ -207,19 +207,22 @@ func prescanLabels(program []string) {
 func buildString(parts []string, offset int) string {
 	var str string
 
+	// append remaining fragments together separated by a space
 	for partId := offset; partId < len(parts); partId++ {
-		if parts[partId][0] == '"' {
-			str += parts[partId][1:]
-		} else
-		if parts[partId][len(parts[partId])-1] == '"' {
-			str += parts[partId][:len(parts[partId])-2]
-		} else {
-			str += parts[partId]
-		}
-
+		str += parts[partId]
 		if partId < len(parts)-1 {
 			str += " "
 		}
+	}
+
+	// trim off the leading ... 
+	if str[0] == '"' {
+		str = str[1:]
+	}
+
+	// and trailing double quotes
+	if str[len(str)-1] == '"' {
+		str = str[:len(str)-1]
 	}
 
 	return str
@@ -276,7 +279,6 @@ func Parse(program []string) bool {
 				InstructionPointer++
 			}
 		
-
 			// Options #1 or #3
 			if fieldCount == 2 {
 				command := fields[0]
@@ -291,7 +293,8 @@ func Parse(program []string) bool {
 						case "HALT": 		doHalt()
 						case "LOAD": 		doLoad(fields[1])
 						case "STORE":		doStore(fields[1])
-						case "PRINT":		doPrint(fields[1])
+						case "PRINT":		argument := buildString(fields, 1)
+											doPrint(argument)
 						case "ADD": 		doAdd(fields[1])
 						case "SUBTRACT": 	doSubtract(fields[1])
 						case "MULTIPLY": 	doMultiply(fields[1])
@@ -309,47 +312,52 @@ func Parse(program []string) bool {
 
 			// Option #2
 			if fieldCount >= 3 {
-				label := fields[0]
-				command := fields[1]
-				argument := fields[2]
+				var label string
 
-				if command == "PRINT" {
-					fmt.Println ("$$$")
-					argument = buildString(fields, 2)
+				if fields[0] == "PRINT" {
+					argument := buildString(fields, 1)
+					doPrint(argument)
+				} else {
 
-					fmt.Printf ("&&& %s\n", argument)
+					if fields[1] == "PRINT" {
+						label = fields[0]
+						_, exists := ProgramLabels[label]
+						if !exists {
+							ProgramLabels[label] = InstructionPointer+1
+						}
 
-					_, exists := ProgramLabels[label]
-					if !exists {
-						ProgramLabels[label] = InstructionPointer+1
-					} 
+						argument := buildString(fields,2)
+						doPrint(argument)
+					} else {
+						label := fields[0]
+						command := fields[1]
+						argument := fields[2]
+		
+						if validCommand(command) {
+							_, exists := ProgramLabels[label]
+							if !exists {
+								ProgramLabels[label] = InstructionPointer+1
+							} 
 
-					doPrint (argument)
-				}
-
-				if validCommand(command) {
-					_, exists := ProgramLabels[label]
-					if !exists {
-						ProgramLabels[label] = InstructionPointer+1
-					} 
-
-					switch (command) {
-						case "IN": 			doIn()
-						case "OUT": 		doOut()
-						case "LINE": 		doLine()
-						case "HALT": 		doHalt()
-						case "LOAD": 		doLoad(argument)
-						case "STORE":		doStore(argument)
-						case "ADD": 		doAdd(argument)
-						case "SUBTRACT": 	doSubtract(argument)
-						case "MULTIPLY": 	doMultiply(argument)
-						case "DIVIDE": 		doDivide(argument)
-						case "JUMP": 		doJump(argument)
-						case "JINEG": 		doJumpIfNegative(argument)
-						case "JIZERO": 		doJumpIfZero(argument)
-						case "%":			doMarkStartOfData(InstructionPointer)
-						case "*":			doMarkEndOfData(InstructionPointer)
-						default:
+							switch (command) {
+								case "IN": 			doIn()
+								case "OUT": 		doOut()
+								case "LINE": 		doLine()
+								case "HALT": 		doHalt()
+								case "LOAD": 		doLoad(argument)
+								case "STORE":		doStore(argument)
+								case "ADD": 		doAdd(argument)
+								case "SUBTRACT": 	doSubtract(argument)
+								case "MULTIPLY": 	doMultiply(argument)
+								case "DIVIDE": 		doDivide(argument)
+								case "JUMP": 		doJump(argument)
+								case "JINEG": 		doJumpIfNegative(argument)
+								case "JIZERO": 		doJumpIfZero(argument)
+								case "%":			doMarkStartOfData(InstructionPointer)
+								case "*":			doMarkEndOfData(InstructionPointer)
+								default:
+							}
+						}
 					}
 				} 
 				InstructionPointer++

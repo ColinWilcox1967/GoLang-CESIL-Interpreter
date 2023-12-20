@@ -1,0 +1,13 @@
+PRINT "Hello"
+LINE
+PRINT "Test Number 2"
+LINE
+PRINT "Hello world"
+LINE
+XX PRINT "Print with label"
+LINE
+XX PRINT "Hello  again"
+LINE
+ZZ PRINT "Colin"
+LINE
+HALT
