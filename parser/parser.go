@@ -2,11 +2,10 @@ package parser
 
 import (
 	"fmt"
-	"os"
+//	"os"
 	"strings"
 	support "../support"
 )
-
 
 var (
 	ProgramLabels map[string]int
@@ -17,6 +16,7 @@ var (
 
 	ProgramDataStart, ProgramDataEnd int
 	DataItemPointer int
+	HaltProgram bool
 )
 
 
@@ -93,7 +93,7 @@ func doDivide(argument string) error {
 	if ok {
 		if value == 0 {
 			support.Message("Divide by zero")
-			os.Exit(-1)
+			HaltProgram = true
 		} else {
 			Accumulator /= value
 		}
@@ -102,7 +102,7 @@ func doDivide(argument string) error {
 		if err == nil {
 			if value == 0 {
 				support.Message("Divide by zero")
-				os.Exit(-1)
+				HaltProgram = true
 			}
 			Accumulator /= value
 		}
@@ -112,7 +112,7 @@ func doDivide(argument string) error {
 }
 
 func doHalt() {
-	os.Exit(0)
+	HaltProgram = true
 }
 
 func doLine() {
@@ -150,27 +150,57 @@ func doStore(argument string) error {
 
 func doJump(argument string) {
 	pos := ProgramLabels[argument]
-	if pos != -1 {
-		InstructionPointer = pos
+	if pos != 0 {
+		InstructionPointer = pos-1 // line 1 is actually offset zero.
 	}
-
 }
 
 func doJumpIfNegative(argument string) {
 	pos := ProgramLabels[argument] 
-	if pos != -1 {
+	if pos != 0 {
 		if Accumulator < 0 {
-			InstructionPointer = pos
+			InstructionPointer = pos-1
 		}		
 	}
 }
 
 func doJumpIfZero(argument string) {
 	pos := ProgramLabels[argument] 
-	if pos != -1 {
+	if pos != 0 {
 		if Accumulator == 0 {
-			InstructionPointer = pos
+			InstructionPointer = pos-1
 		}		
+	}
+}
+
+func labelAlreadyDefined(label string) bool {
+	return ProgramLabels[label] != 0
+}
+
+func prescanLabels(program []string) {
+	for lineNumber, line := range (program) {
+		fields := strings.Fields (line)
+		fieldCount := len(fields)
+
+		switch (fieldCount) {
+			case 0: // no fields = no labels!!
+				
+			case 1: if !validCommand(fields[0]) {
+						if !labelAlreadyDefined(fields[0]) {
+							ProgramLabels[fields[0]] = lineNumber
+						} else {
+							str := fmt.Sprintf("Label '%s' already defined at line %d.\n", strings.ToUpper(fields[0]), lineNumber+1)
+							support.Message(str)
+						}
+					}		 
+			case 2,3: if !validCommand(fields[0]) {
+						if !labelAlreadyDefined(fields[0]) {
+							ProgramLabels[fields[0]] = lineNumber
+						} 			
+					}	
+			
+			default:
+		}
 	}
 }
 
@@ -182,7 +212,7 @@ func buildString(parts []string, offset int) string {
 			str += parts[partId][1:]
 		} else
 		if parts[partId][len(parts[partId])-1] == '"' {
-			str += parts[partId][:len(parts[partId])-1]
+			str += parts[partId][:len(parts[partId])-2]
 		} else {
 			str += parts[partId]
 		}
@@ -195,71 +225,137 @@ func buildString(parts []string, offset int) string {
 	return str
 }
 
+func validCommand(command string) bool {
+	supportCommands := [...]string{"HALT","LINE","OUT","LOAD","STORE","PRINT","ADD","DIVIDE","MULTIPLY","SUBTRACT","JUMP","JINEG","JIZERO"}
+
+	for i := 0; i < len(supportCommands); i++ {
+		if command == supportCommands[i] {
+			return true
+		}
+	}
+	return false
+}
+
 func Parse(program []string) bool {
 
-	for lineNumber := 0; lineNumber < len(program); lineNumber++ {
+	prescanLabels(program)
 
-		fields := strings.Fields (program[lineNumber])
-		
-		var label, instruction, argument string
-
-		if len(fields) >= 3 {
-			// LABEL COMMAND ARGUMENT
-			label  = strings.ToUpper(fields[0])
-			_, ok := ProgramLabels[label]
+	InstructionPointer = 0
+	
+	for !HaltProgram {
+		fields := strings.Fields (program[InstructionPointer])
 			
-			if !ok {
-				ProgramLabels[label] = lineNumber
-			}
+		fieldCount := len(fields)
+	
+		// There line formatting options are:
+		// (1) LABEL COMMAND
+		// (2) LABEL COMMAND ARGUMENT
+		// (3) COMMAND ARGUMENT
+		// (4) COMMAND
+		// (5) <empty line> (skip)
+		// (6) Comment line (skip)
+		// (7) LABEL
 
-			instruction = fields[1]
-
-			argument = buildString(fields, 2) // build parts into a printable string
-						
-		} else if len(fields) == 2 {
-			// COMMAND ARGUMENT
-			instruction = fields[0]
-
-			if instruction == "PRINT" {
-				argument = buildString(fields, 1)
-			} else {
-				argument = fields[1]
-			}
+		// case #5
+		if len(program[InstructionPointer]) == 0 {
+			InstructionPointer++
 		} else {
-			instruction = program[lineNumber]
-		}
-		
-		if len(instruction) > 0 {
-			switch (instruction) {
-				case "HALT": 		doHalt()
-				case "LINE": 		doLine()
-				case "LOAD": 		doLoad(argument)
-				case "STORE":		doStore(argument)
-				case "IN": 			doIn()
-				case "OUT": 		doOut()
-				case "PRINT":		doPrint(argument)
-				case "ADD": 		doAdd(argument)
-				case "SUBTRACT": 	doSubtract(argument)
-				case "MULTIPLY": 	doMultiply(argument)
-				case "DIVIDE": 		doDivide(argument)
-				case "JUMP": 		doJump(argument)
-				case "JINEG": 		doJumpIfNegative(argument)
-				case "JIZERO": 		doJumpIfZero(argument)
-				case "%":			doMarkStartOfData(lineNumber)
-				case "*":			doMarkEndOfData(lineNumber)
-				default:
-					// Comment
-					if program[lineNumber][0] == '(' {
-						break
-					}
 
-					if lineNumber >= ProgramDataStart && lineNumber <= ProgramDataEnd {
-						doAddDataItem(program[lineNumber], lineNumber)
-					} else {
-						fmt.Printf ("Unknown instruction in line %d : '%s'\n", lineNumber+1, instruction)
+			// Option #4 or #7
+			if fieldCount == 1 {
+				if validCommand(fields[0]) {
+					switch (fields[0]) {
+						case "IN": doIn()
+						case "OUT": doOut()
+						case "LINE": doLine()
+						case "HALT": doHalt()
+						default:
 					}
+					
+				} 
+				InstructionPointer++
 			}
-		}	
+		
+
+			// Options #1 or #3
+			if fieldCount == 2 {
+				command := fields[0]
+				if !validCommand(command) {
+					command = fields[1]
+				}
+				if validCommand(command) {
+					switch (command) {
+						case "IN": 			doIn()
+						case "OUT": 		doOut()
+						case "LINE": 		doLine()
+						case "HALT": 		doHalt()
+						case "LOAD": 		doLoad(fields[1])
+						case "STORE":		doStore(fields[1])
+						case "PRINT":		doPrint(fields[1])
+						case "ADD": 		doAdd(fields[1])
+						case "SUBTRACT": 	doSubtract(fields[1])
+						case "MULTIPLY": 	doMultiply(fields[1])
+						case "DIVIDE": 		doDivide(fields[1])
+						case "JUMP": 		doJump(fields[1])
+						case "JINEG": 		doJumpIfNegative(fields[1])
+						case "JIZERO": 		doJumpIfZero(fields[1])
+						case "%":			doMarkStartOfData(InstructionPointer)
+						case "*":			doMarkEndOfData(InstructionPointer)
+						default:
+					}
+				}
+				InstructionPointer++
+			}
+
+			// Option #2
+			if fieldCount >= 3 {
+				label := fields[0]
+				command := fields[1]
+				argument := fields[2]
+
+				if command == "PRINT" {
+					fmt.Println ("$$$")
+					argument = buildString(fields, 2)
+
+					fmt.Printf ("&&& %s\n", argument)
+
+					_, exists := ProgramLabels[label]
+					if !exists {
+						ProgramLabels[label] = InstructionPointer+1
+					} 
+
+					doPrint (argument)
+				}
+
+				if validCommand(command) {
+					_, exists := ProgramLabels[label]
+					if !exists {
+						ProgramLabels[label] = InstructionPointer+1
+					} 
+
+					switch (command) {
+						case "IN": 			doIn()
+						case "OUT": 		doOut()
+						case "LINE": 		doLine()
+						case "HALT": 		doHalt()
+						case "LOAD": 		doLoad(argument)
+						case "STORE":		doStore(argument)
+						case "ADD": 		doAdd(argument)
+						case "SUBTRACT": 	doSubtract(argument)
+						case "MULTIPLY": 	doMultiply(argument)
+						case "DIVIDE": 		doDivide(argument)
+						case "JUMP": 		doJump(argument)
+						case "JINEG": 		doJumpIfNegative(argument)
+						case "JIZERO": 		doJumpIfZero(argument)
+						case "%":			doMarkStartOfData(InstructionPointer)
+						case "*":			doMarkEndOfData(InstructionPointer)
+						default:
+					}
+				} 
+				InstructionPointer++
+			}
+		}
+	
 	}
 
 	return true
