@@ -1,13 +1,17 @@
-PRINT "Hello"
-LINE
-PRINT "Test Number 2"
-LINE
-PRINT "Hello world"
-LINE
-XX PRINT "Print with label"
-LINE
-XX PRINT "Hello  again"
-LINE
-ZZ PRINT "Colin"
-LINE
+LOAD 0
+STORE X
+LOOP IN 
+OUT
+JINEG END
+ADD X
+JMP LOOP
+LOAD X
+END PRINT "The total is "
+OUT
 HALT
+%
+3
+5
+7
+-1
+*

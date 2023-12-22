@@ -15,7 +15,8 @@ var (
 	Variables map[string]int
 	ProgramData []int
 
-	ProgramDataStart, ProgramDataEnd int
+	ProgramDataStart int = -1 // undefined
+	ProgramDataEnd int = -1 // undefined
 	DataItemPointer int
 	HaltProgram bool
 	DataStartSet, DataEndSet bool
@@ -189,14 +190,37 @@ func labelAlreadyDefined(label string) bool {
 }
 
 func preScanDataBlock(program []string) {
-	for lineIndex := ProgramDataStart+1; lineIndex < ProgramDataEnd; lineIndex++ {
-		
-		value, err := strconv.Atoi(program[lineIndex])
-		if err == nil {
-			ProgramData = append(ProgramData, value)
-		} else {
-			str := fmt.Sprintf ("Problem with data value '%s' on line %d.\n", program[lineIndex], lineIndex)
+
+	// Check we have a matching pairt of start/end data block markers
+	if ProgramDataStart >= 0 && ProgramDataEnd == -1 {
+		str := fmt.Sprintf ("Missing end of data block marker.\n")
+		support.Message(str)
+		HaltProgram = true
+	} else 
+	if ProgramDataStart == -1 && ProgramDataEnd >= 0 {
+		str := fmt.Sprintf ("Missing start of data block marker.\n")
+		support.Message(str)
+		HaltProgram = true
+	}
+
+	if !HaltProgram {
+		// Check markers are correct way round
+		if ProgramDataStart > ProgramDataEnd {
+			str := fmt.Sprintf ("Data block start marker defined AFTER end marker.\n")
 			support.Message(str)
+			HaltProgram = true
+		} else {
+			// Now iterate through the intermediate program lines and fill out data block
+			for lineIndex := ProgramDataStart+1; lineIndex < ProgramDataEnd; lineIndex++ {
+			
+				value, err := strconv.Atoi(program[lineIndex])
+				if err == nil {
+					ProgramData = append(ProgramData, value)
+				} else {
+					str := fmt.Sprintf ("Problem with data value '%s' on line %d.\n", program[lineIndex], lineIndex)
+					support.Message(str)
+				}
+			}
 		}
 	}
 }
@@ -376,23 +400,23 @@ func Parse(program []string) bool {
 						if !exists {
 							ProgramLabels[label] = InstructionPointer+1
 						} 
-							switch (command) {
-								case "IN": 			doIn()
-								case "OUT": 		doOut()
-								case "LINE": 		doLine()
-								case "HALT": 		doHalt()
-								case "LOAD": 		doLoad(argument)
-								case "STORE":		doStore(argument)
-								case "ADD": 		doAdd(argument)
-								case "SUBTRACT": 	doSubtract(argument)
-								case "MULTIPLY": 	doMultiply(argument)
-								case "DIVIDE": 		doDivide(argument)
-								case "JUMP": 		doJump(argument)
-								case "JINEG": 		doJumpIfNegative(argument)
-								case "JIZERO": 		doJumpIfZero(argument)
-								case "%":			doMarkStartOfData(InstructionPointer)
-								case "*":			doMarkEndOfData(InstructionPointer)
-								default:
+						switch (command) {
+							case "IN": 			doIn()
+							case "OUT": 		doOut()
+							case "LINE": 		doLine()
+							case "HALT": 		doHalt()
+							case "LOAD": 		doLoad(argument)
+							case "STORE":		doStore(argument)
+							case "ADD": 		doAdd(argument)
+							case "SUBTRACT": 	doSubtract(argument)
+							case "MULTIPLY": 	doMultiply(argument)
+							case "DIVIDE": 		doDivide(argument)
+							case "JUMP": 		doJump(argument)
+							case "JINEG": 		doJumpIfNegative(argument)
+							case "JIZERO": 		doJumpIfZero(argument)
+							case "%":			doMarkStartOfData(InstructionPointer)
+							case "*":			doMarkEndOfData(InstructionPointer)
+							default:
 						}
 					}
 				}
