@@ -4,6 +4,7 @@ import (
 	"fmt"
 //	"os"
 	"strings"
+	"strconv"
 	support "../support"
 )
 
@@ -17,16 +18,19 @@ var (
 	ProgramDataStart, ProgramDataEnd int
 	DataItemPointer int
 	HaltProgram bool
+	DataStartSet, DataEndSet bool
 )
 
 
 func doMarkStartOfData(lineNumber int) {
-	ProgramDataStart = lineNumber+1
+	ProgramDataStart = lineNumber
 	DataItemPointer = 0
+	DataStartSet = true
 }
 
 func doMarkEndOfData(lineNumber int) {
-	ProgramDataEnd = lineNumber - 1
+	ProgramDataEnd = lineNumber
+	DataEndSet = true
 }
 
 func doAddDataItem(dataLine string, lineNumber int) {
@@ -120,8 +124,15 @@ func doLine() {
 }
 
 func doIn() {
-	Accumulator = ProgramData[DataItemPointer]
-	DataItemPointer++
+	dataBlockSize := ProgramDataEnd-ProgramDataStart-1
+
+	if DataItemPointer >= dataBlockSize {
+		support.Message ("More data needed.")
+		HaltProgram = true
+	} else {
+		Accumulator = ProgramData[DataItemPointer]
+		DataItemPointer++
+	}
 }
 
 func doOut() {
@@ -177,6 +188,19 @@ func labelAlreadyDefined(label string) bool {
 	return ProgramLabels[label] != 0
 }
 
+func preScanDataBlock(program []string) {
+	for lineIndex := ProgramDataStart+1; lineIndex < ProgramDataEnd; lineIndex++ {
+		
+		value, err := strconv.Atoi(program[lineIndex])
+		if err == nil {
+			ProgramData = append(ProgramData, value)
+		} else {
+			str := fmt.Sprintf ("Problem with data value '%s' on line %d.\n", program[lineIndex], lineIndex)
+			support.Message(str)
+		}
+	}
+}
+
 func prescanLabels(program []string) {
 	for lineNumber, line := range (program) {
 		fields := strings.Fields (line)
@@ -192,11 +216,27 @@ func prescanLabels(program []string) {
 							str := fmt.Sprintf("Label '%s' already defined at line %d.\n", strings.ToUpper(fields[0]), lineNumber+1)
 							support.Message(str)
 						}
+					} else {
+						switch(fields[0]) {
+							case "%": if !DataStartSet {
+											doMarkStartOfData(lineNumber)
+									  } else {
+											str := fmt.Sprintf("Start of data block already specified at line %d.\n", ProgramDataStart)
+											support.Message(str)
+									  }
+							case "*": if !DataEndSet {
+											doMarkEndOfData(lineNumber)
+									  } else {
+											str := fmt.Sprintf("End of data block already specified at line %d.\n", ProgramDataEnd)
+											support.Message(str)
+									  }
+							default: 
+						}
 					}		 
 			case 2,3: if !validCommand(fields[0]) {
 						if !labelAlreadyDefined(fields[0]) {
 							ProgramLabels[fields[0]] = lineNumber
-						} 			
+						} 
 					}	
 			
 			default:
@@ -229,7 +269,7 @@ func buildString(parts []string, offset int) string {
 }
 
 func validCommand(command string) bool {
-	supportCommands := [...]string{"HALT","LINE","OUT","LOAD","STORE","PRINT","ADD","DIVIDE","MULTIPLY","SUBTRACT","JUMP","JINEG","JIZERO"}
+	supportCommands := [...]string{"%","(","*","HALT","LINE","IN", "OUT","LOAD","STORE","PRINT","ADD","DIVIDE","MULTIPLY","SUBTRACT","JUMP","JINEG","JIZERO"}
 
 	for i := 0; i < len(supportCommands); i++ {
 		if command == supportCommands[i] {
@@ -242,11 +282,12 @@ func validCommand(command string) bool {
 func Parse(program []string) bool {
 
 	prescanLabels(program)
+	preScanDataBlock(program)
 
 	InstructionPointer = 0
 	
 	for !HaltProgram {
-		fields := strings.Fields (program[InstructionPointer])
+		fields := strings.Fields(program[InstructionPointer])
 			
 		fieldCount := len(fields)
 	
@@ -260,85 +301,81 @@ func Parse(program []string) bool {
 		// (7) LABEL
 
 		// case #5
-		if len(program[InstructionPointer]) == 0 {
+		if fieldCount == 0 {
 			InstructionPointer++
-		} else {
-
-			// Option #4 or #7
-			if fieldCount == 1 {
-				if validCommand(fields[0]) {
-					switch (fields[0]) {
-						case "IN": doIn()
-						case "OUT": doOut()
-						case "LINE": doLine()
-						case "HALT": doHalt()
-						default:
-					}
-					
-				} 
-				InstructionPointer++
-			}
+		} 
 		
-			// Options #1 or #3
-			if fieldCount == 2 {
-				command := fields[0]
-				if !validCommand(command) {
-					command = fields[1]
+		// Option #4 or #7
+		if fieldCount == 1 {
+			if validCommand(fields[0]) {
+				switch (fields[0]) {
+					case "IN": doIn()
+					case "OUT": doOut()
+					case "LINE": doLine()
+					case "HALT": doHalt()
+					default:
 				}
-				if validCommand(command) {
-					switch (command) {
-						case "IN": 			doIn()
-						case "OUT": 		doOut()
-						case "LINE": 		doLine()
-						case "HALT": 		doHalt()
-						case "LOAD": 		doLoad(fields[1])
-						case "STORE":		doStore(fields[1])
-						case "PRINT":		argument := buildString(fields, 1)
-											doPrint(argument)
-						case "ADD": 		doAdd(fields[1])
-						case "SUBTRACT": 	doSubtract(fields[1])
-						case "MULTIPLY": 	doMultiply(fields[1])
-						case "DIVIDE": 		doDivide(fields[1])
-						case "JUMP": 		doJump(fields[1])
-						case "JINEG": 		doJumpIfNegative(fields[1])
-						case "JIZERO": 		doJumpIfZero(fields[1])
-						case "%":			doMarkStartOfData(InstructionPointer)
-						case "*":			doMarkEndOfData(InstructionPointer)
-						default:
-					}
-				}
-				InstructionPointer++
+				
+			} else {
+
 			}
+			InstructionPointer++
+		}
+		
+		// Options #1 or #3
+		if fieldCount == 2 {
+			command := fields[0]
+			if !validCommand(command) {
+				command = fields[1]
+			}
+			if validCommand(command) {
+				switch (command) {
+					case "IN": 			doIn()
+					case "OUT": 		doOut()
+					case "LINE": 		doLine()
+					case "HALT": 		doHalt()
+					case "LOAD": 		doLoad(fields[1])
+					case "STORE":		doStore(fields[1])
+					case "PRINT":		argument := buildString(fields, 1)
+										doPrint(argument)
+					case "ADD": 		doAdd(fields[1])
+					case "SUBTRACT": 	doSubtract(fields[1])
+					case "MULTIPLY": 	doMultiply(fields[1])
+					case "DIVIDE": 		doDivide(fields[1])
+					case "JUMP": 		doJump(fields[1])
+					case "JINEG": 		doJumpIfNegative(fields[1])
+					case "JIZERO": 		doJumpIfZero(fields[1])
+					default:
+				}
+			}
+			InstructionPointer++
+		}
 
-			// Option #2
-			if fieldCount >= 3 {
-				var label string
-
+		// Option #2
+		if fieldCount >= 3 {
+			var label string
 				if fields[0] == "PRINT" {
-					argument := buildString(fields, 1)
+				argument := buildString(fields, 1)
+				doPrint(argument)
+			} else {
+					if fields[1] == "PRINT" {
+					label = fields[0]
+					_, exists := ProgramLabels[label]
+					if !exists {
+						ProgramLabels[label] = InstructionPointer+1
+					}
+						argument := buildString(fields,2)
 					doPrint(argument)
 				} else {
-
-					if fields[1] == "PRINT" {
-						label = fields[0]
+					label := fields[0]
+					command := fields[1]
+					argument := fields[2]
+	
+					if validCommand(command) {
 						_, exists := ProgramLabels[label]
 						if !exists {
 							ProgramLabels[label] = InstructionPointer+1
-						}
-
-						argument := buildString(fields,2)
-						doPrint(argument)
-					} else {
-						label := fields[0]
-						command := fields[1]
-						argument := fields[2]
-		
-						if validCommand(command) {
-							_, exists := ProgramLabels[label]
-							if !exists {
-								ProgramLabels[label] = InstructionPointer+1
-							} 
-
+						} 
 							switch (command) {
 								case "IN": 			doIn()
 								case "OUT": 		doOut()
@@ -356,14 +393,12 @@ func Parse(program []string) bool {
 								case "%":			doMarkStartOfData(InstructionPointer)
 								case "*":			doMarkEndOfData(InstructionPointer)
 								default:
-							}
 						}
 					}
-				} 
-				InstructionPointer++
-			}
+				}
+			} 
+			InstructionPointer++
 		}
-	
 	}
 
 	return true
