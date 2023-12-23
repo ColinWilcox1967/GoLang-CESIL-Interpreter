@@ -6,7 +6,7 @@ import (
 )
 
 func Message(message string) {
-	str := fmt.Sprintf("*** Error : %s\n", message)
+	str := fmt.Sprintf("*** Error : %s", message)
 	fmt.Println(str)
 }
 
